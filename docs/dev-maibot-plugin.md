@@ -49,7 +49,7 @@ else:
 ```
 
 > RPC 层失败时 `ctx.api.call` 返回 `{"success": False, "error": ...}`（无 `result` 键）；
-> 建议像参考实现 `cateye_maibot-deepseek-harness-connect/hub_client.py` 那样做一次归一化。
+> 建议对返回值做一次归一化（把失败统一成 `{"success": False, "error": ...}`）再使用。
 
 ## 3. 长耗时任务：call 还是 submit？
 
@@ -97,8 +97,8 @@ async def on_adb_status(self, event: str = "", data: dict | None = None, **kwarg
 
 ## 5. 命令名从哪来？
 
-本地端插件在握手时上报命令注册表（如 `cateye_deepseek_harness` 提供
-`deepseek/screenshot/cmd_start/cmd_stop/run/preset`）。你的插件可调用
+本地端插件在握手时上报命令注册表（例如某插件提供
+`screenshot/cmd_start/cmd_stop` 等命令）。你的插件可调用
 `status` API 查询 `known_commands`；发未知命令会得到
 `本地未加载可处理「<命令>」的插件` 错误。
 

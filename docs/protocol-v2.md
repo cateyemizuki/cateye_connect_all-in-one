@@ -30,8 +30,8 @@
   "version": 2,
   "client": "cateye-connect-framework/1.0.0",
   "plugins": [
-    {"name": "cateye_deepseek_harness", "version": "1.0.0",
-     "description": "...", "commands": ["deepseek", "screenshot", "cmd_start", "cmd_stop", "run", "preset"]}
+    {"name": "<你的插件名>", "version": "1.0.0",
+     "description": "...", "commands": ["echo", "screenshot"]}
   ]
 }
 ```

@@ -47,25 +47,23 @@
   修改连接参数保存后自动断开重连生效；标有「需重启」的项保存后提示重启。
 - **插件配置页**：编辑各插件目录下的 `config.json`。声明了 `config_schema`
   的插件渲染中文表单，未声明的按当前值自动推断；保存后调用插件的
-  `on_config_update` 热更新（`cateye_deepseek_harness` 已支持，立即生效）。
+  `on_config_update` 热更新（插件实现该钩子即可立即生效，见 docs/dev-local-plugin.md）。
 - 两种编辑模式：表单 / 原始 JSON；保存前自动把原文件备份为 `.bak`，
   未在表单中的自定义字段保留。
 
-## 已内置插件
+## 业务插件
 
-- `plugins/cateye_deepseek_harness/`：DeepSeek Harness 对话 + 截图 / CMD /
-  运行 / 预设 / ADB。数据目录 `plugins/cateye_deepseek_harness/data/`
-  （deepseek 工作区、preset 脚本、cmds、ADB；preset 脚本的 `cd ../ADB`
-  依赖 preset 与 ADB 同级，勿拆分）。
+框架**不内置业务插件**：把自建插件目录放到 `plugins/<插件名>/`（含 `plugin.json`
+与 `create_plugin`）即被自动加载，写法见 [../docs/dev-local-plugin.md](../docs/dev-local-plugin.md)。
+插件私有数据放各自的 `<插件>/data/`（`ctx.data_dir` 已自动创建）。
 
 ## 从旧版单文件客户端迁移
 
-旧 `local_config.json` 的字段按职责拆成了两处：`ws_url`/`token`/`ws_tls`/
-`reconnect_interval` 属于本框架的 `config.json`（client 根目录）；
-`dsh`/`work_dirs`/`features`/`screenshot` 属于插件的
-`plugins/cateye_deepseek_harness/config.json`。旧版从未生效的字段
-（`dsh.timeout`、`work_dirs.cmd`、`shell_whitelist` 及本地限流项——
-限流实际由 MaiBot 侧执行）已移除。
+旧 `local_config.json` 的字段按职责拆分：`ws_url`/`token`/`ws_tls`/
+`reconnect_interval` 属于本框架的 `config.json`（client 根目录）；业务字段
+（对话 / 工作目录 / 功能开关 / 截图等）属于各业务插件自己的
+`plugins/<插件名>/config.json`。旧版从未生效的字段（`dsh.timeout`、
+`work_dirs.cmd`、`shell_whitelist` 及本地限流项——限流实际由 MaiBot 侧执行）已移除。
 
 ## 开发新插件
 

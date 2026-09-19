@@ -1,0 +1,6 @@
+# 行尾约定：Windows 脚本必须保持 CRLF
+# cmd.exe 在 LF 行尾下解析含中文的 .cmd/.bat 会报错（如 'xxx' is not recognized），
+# 且 GitHub ZIP 下载 / autocrlf=false 的 clone 会原样得到 LF。
+# 这里强制 checkout 与归档均为 CRLF。
+*.cmd text eol=crlf
+*.bat text eol=crlf

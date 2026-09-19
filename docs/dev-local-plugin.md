@@ -85,7 +85,7 @@ def create_plugin(ctx) -> LocalPlugin:
    顶层为分组数组：`[{"title": "DSH", "fields": [...]}]`。
 2. **实现 on_config_update**（LocalPlugin 可选方法）：WebUI 保存插件配置后调用，
    收到合并后的完整配置；就地更新内存状态并 `return True`（立即生效），
-   不实现则修改写入文件、重启框架后生效。参考 `cateye_deepseek_harness/plugin.py`。
+   不实现则修改写入文件、重启框架后生效。
 
 ### 约定
 
