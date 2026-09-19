@@ -1,0 +1,38 @@
+{
+  "manifest_version": 2,
+  "id": "cateye.connect-hub",
+  "version": "1.0.0",
+  "name": "Cateye 统一连接插件",
+  "description": "MaiBot 端与本地 PC 之间的统一 WebSocket 连接通道：持有唯一连接，向其他插件暴露 call/submit/status/subscribe 公共 API，业务插件无需自行管理连接。",
+  "author": {
+    "name": "cateye",
+    "url": "https://github.com/cateye"
+  },
+  "license": "MIT",
+  "urls": {
+    "repository": "https://github.com/cateye/cateye_connect_all-in-one"
+  },
+  "host_application": {
+    "min_version": "1.0.0",
+    "max_version": "1.99.99"
+  },
+  "sdk": {
+    "min_version": "2.0.0",
+    "max_version": "2.99.99"
+  },
+  "dependencies": [
+    {
+      "type": "python_package",
+      "name": "websockets",
+      "version_spec": ">=12.0"
+    }
+  ],
+  "capabilities": [
+    "api.call",
+    "send.text",
+    "send.hybrid"
+  ],
+  "i18n": {
+    "default_locale": "zh-CN"
+  }
+}

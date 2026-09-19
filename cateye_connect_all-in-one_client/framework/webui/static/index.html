@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Cateye Connect 本地端</title>
+<style>
+  :root {
+    --bg: #f4f6f9; --card: #ffffff; --line: #e3e8ef; --text: #1f2937;
+    --muted: #6b7280; --accent: #2563eb; --ok: #16a34a; --bad: #dc2626;
+    --warn-bg: #fef3c7; --warn-tx: #92400e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111827; --card: #1f2937; --line: #374151; --text: #e5e7eb;
+      --muted: #9ca3af; --accent: #60a5fa; --ok: #4ade80; --bad: #f87171;
+      --warn-bg: #78350f; --warn-tx: #fde68a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 12px 20px;
+    background: var(--card); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 16px; margin: 0; }
+  nav { display: flex; gap: 4px; margin-left: auto; }
+  nav button { border: none; background: transparent; color: var(--muted);
+    padding: 6px 14px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+  nav button.active { background: var(--accent); color: #fff; }
+  main { max-width: 960px; margin: 20px auto; padding: 0 16px; }
+  .card { background: var(--card); border: 1px solid var(--line);
+    border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }
+  .card h2 { font-size: 14px; margin: 0 0 12px; color: var(--muted); font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .dot.on { background: var(--ok); } .dot.off { background: var(--bad); }
+  .muted { color: var(--muted); }
+  button.btn { background: var(--accent); color: #fff; border: none; padding: 8px 18px;
+    border-radius: 8px; cursor: pointer; font-size: 14px; }
+  button.btn.ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  button.btn:disabled { opacity: .5; cursor: default; }
+  .field { margin-bottom: 14px; }
+  .field-label { font-weight: 600; margin-bottom: 4px; display: flex; gap: 8px; align-items: center; }
+  .desc { color: var(--muted); font-size: 12px; margin-top: 3px; white-space: pre-wrap; }
+  input[type=text], input[type=password], input[type=number], select, textarea {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--bg); color: var(--text); font: inherit; }
+  textarea { min-height: 260px; font-family: Consolas, monospace; }
+  .badge-restart { font-size: 11px; color: var(--warn-tx); background: var(--warn-bg);
+    padding: 1px 8px; border-radius: 999px; }
+  .switch { position: relative; display: inline-block; width: 42px; height: 22px; }
+  .switch input { display: none; }
+  .switch span { position: absolute; inset: 0; background: var(--line);
+    border-radius: 999px; transition: .15s; cursor: pointer; }
+  .switch span::after { content: ""; position: absolute; top: 3px; left: 3px;
+    width: 16px; height: 16px; background: #fff; border-radius: 50%; transition: .15s; }
+  .switch input:checked + span { background: var(--accent); }
+  .switch input:checked + span::after { left: 23px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .chip { background: var(--bg); border: 1px solid var(--line); border-radius: 999px;
+    padding: 1px 10px; font-size: 12px; }
+  #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--text); color: var(--bg); padding: 10px 20px; border-radius: 10px;
+    display: none; max-width: 80%; }
+  #toast.err { background: var(--bad); color: #fff; }
+  #login { position: fixed; inset: 0; background: var(--bg); display: none;
+    align-items: center; justify-content: center; z-index: 10; }
+  #login .card { width: 340px; }
+  pre.status-json { background: var(--bg); border: 1px solid var(--line);
+    border-radius: 8px; padding: 10px; font-size: 12px; overflow: auto; }
+</style>
+</head>
+<body>
+<div id="login">
+  <div class="card">
+    <h2>访问验证</h2>
+    <div class="field">
+      <div class="field-label">访问密码</div>
+      <input type="password" id="login-pwd" autocomplete="off">
+      <div class="desc">密码在框架首次启动时自动生成，见 config.json 的 webui.password（框架控制台日志也会打印）。</div>
+    </div>
+    <button class="btn" id="login-btn">登录</button>
+  </div>
+</div>
+<header>
+  <h1>Cateye Connect 本地端</h1>
+  <span id="conn" class="muted"></span>
+  <nav>
+    <button data-tab="status" class="active">状态</button>
+    <button data-tab="framework">框架配置</button>
+    <button data-tab="plugin">插件配置</button>
+  </nav>
+</header>
+<main id="main"></main>
+<div id="toast"></div>
+
+<script>
+"use strict";
+const $ = (s, el) => (el || document).querySelector(s);
+const $$ = (s, el) => Array.from((el || document).querySelectorAll(s));
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+let authed = false;
+let statusCache = null;
+let badgeTimer = null;
+
+function startBadgeTimer() {
+  if (!badgeTimer) badgeTimer = setInterval(refreshConnBadge, 10000);
+}
+
+function toast(msg, isErr) {
+  const t = $("#toast");
+  t.textContent = msg;
+  t.className = isErr ? "err" : "";
+  t.style.display = "block";
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.style.display = "none", 4000);
+}
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, {
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    ...opts,
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+  });
+  if (res.status === 401) { showLogin(true); throw new Error("未登录"); }
+  let data = {};
+  try { data = await res.json(); } catch (e) { /* ignore */ }
+  if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+  return data;
+}
+
+function showLogin(on) {
+  authed = !on;
+  $("#login").style.display = on ? "flex" : "none";
+  if (on) setTimeout(() => $("#login-pwd").focus(), 50);
+}
+
+// ---------- 表单渲染 ----------
+function fieldHtml(f, value) {
+  const v = value === undefined ? f.default : value;
+  const desc = f.description ? `<div class="desc">${esc(f.description)}</div>` : "";
+  const restart = f.restart ? `<span class="badge-restart">需重启</span>` : "";
+  const label = `<div class="field-label">${esc(f.label || f.key)} ${restart}</div>`;
+  let ctrl;
+  switch (f.type) {
+    case "bool":
+      ctrl = `<label class="switch"><input type="checkbox" data-key="${esc(f.key)}" data-type="bool" ${v ? "checked" : ""}><span></span></label>`;
+      break;
+    case "int":
+      ctrl = `<input type="number" data-key="${esc(f.key)}" value="${esc(v ?? "")}" ${f.min != null ? `min="${f.min}"` : ""} ${f.max != null ? `max="${f.max}"` : ""}>`;
+      break;
+    case "list":
+      ctrl = `<input type="text" data-key="${esc(f.key)}" data-type="list" value="${esc((v || []).join(", "))}" placeholder="多个值用逗号分隔">`;
+      break;
+    case "enum":
+      ctrl = `<select data-key="${esc(f.key)}">${(f.options || []).map(o => `<option value="${esc(o)}" ${o === v ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>`;
+      break;
+    default:
+      ctrl = `<input type="${f.secret ? "password" : "text"}" data-key="${esc(f.key)}" value="${esc(v ?? "")}" ${f.placeholder ? `placeholder="${esc(f.placeholder)}"` : ""} autocomplete="off">`;
+  }
+  return `<div class="field">${label}${ctrl}${desc}</div>`;
+}
+
+function formHtml(schema, values) {
+  return (schema || []).map(g => `
+    <div class="card"><h2>${esc(g.title || "配置")}</h2>
+      ${g.fields.map(f => fieldHtml(f, get(values, f.key))).join("")}
+    </div>`).join("");
+}
+
+function get(obj, path) {
+  return path.split(".").reduce((o, k) => (o == null ? undefined : o[k]), obj);
+}
+function setPath(obj, path, value) {
+  const parts = path.split(".");
+  let cur = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (typeof cur[parts[i]] !== "object" || cur[parts[i]] === null) cur[parts[i]] = {};
+    cur = cur[parts[i]];
+  }
+  cur[parts[parts.length - 1]] = value;
+}
+
+function collect(root) {
+  const out = {};
+  $$("[data-key]", root).forEach(el => {
+    let v;
+    if (el.dataset.type === "bool") v = el.checked;
+    else if (el.dataset.type === "list")
+      v = el.value.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+    else if (el.type === "number") v = el.value === "" ? "" : Number(el.value);
+    else v = el.value;
+    setPath(out, el.dataset.key, v);
+  });
+  return out;
+}
+
+function editorView({ schema, config, file, rawId }) {
+  return `
+    <div class="row" style="justify-content:flex-end;margin-bottom:10px">
+      <button class="btn ghost" data-raw="${rawId}">原始 JSON 模式</button>
+      <span class="muted" style="font-size:12px">${esc(file || "")}</span>
+    </div>
+    <div id="${rawId}-form">${formHtml(schema, config)}</div>
+    <div id="${rawId}-raw" style="display:none">
+      <textarea id="${rawId}-text"></textarea>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <button class="btn" data-save="${rawId}">保存</button>
+      <span class="muted" style="font-size:12px">保存前自动备份原文件为 .bak；未知字段保留</span>
+    </div>`;
+}
+
+function bindEditor(containerId, savePath, onSaved) {
+  const root = $("#" + containerId);
+  $$("[data-raw]", root).forEach(btn => btn.onclick = () => {
+    const id = btn.dataset.raw;
+    const form = $("#" + id + "-form"), raw = $("#" + id + "-raw");
+    const toRaw = raw.style.display === "none";
+    if (toRaw) {
+      const cfg = collect(root);
+      $("#" + id + "-text").value = JSON.stringify(cfg, null, 2);
+    }
+    raw.style.display = toRaw ? "block" : "none";
+    form.style.display = toRaw ? "none" : "block";
+    btn.textContent = toRaw ? "表单模式" : "原始 JSON 模式";
+  });
+  $$("[data-save]", root).forEach(btn => btn.onclick = async () => {
+    const id = btn.dataset.save;
+    const rawShown = $("#" + id + "-raw").style.display !== "none";
+    let patch;
+    if (rawShown) {
+      try { patch = JSON.parse($("#" + id + "-text").value); }
+      catch (e) { return toast("JSON 解析失败: " + e.message, true); }
+    } else {
+      patch = collect(root);
+    }
+    btn.disabled = true;
+    try {
+      const resp = await api(savePath, { method: "POST", body: { config: patch } });
+      let msg = "已保存";
+      if (resp.reconnected) msg += "；连接配置已变更，正在重连";
+      if (resp.restart_required && resp.restart_required.length)
+        msg += "；以下设置需重启框架生效: " + resp.restart_required.join("、");
+      if (resp.error) msg += "（" + resp.error + "）";
+      toast(msg, !!resp.error);
+      if (onSaved) onSaved(resp);
+    } catch (e) { toast("保存失败: " + e.message, true); }
+    btn.disabled = false;
+  });
+}
+
+// ---------- 各视图 ----------
+async function viewStatus() {
+  $("#main").innerHTML = `<div class="card"><h2>加载中…</h2></div>`;
+  statusCache = await api("/api/status");
+  const s = statusCache;
+  const pluginCards = (s.plugins || []).map(p => `
+    <div class="card"><h2>${esc(p.name)} v${esc(p.version)}</h2>
+      <div>${esc(p.description || "")}</div>
+      <div class="chips">${(p.commands || []).map(c => `<span class="chip">${esc(c)}</span>`).join("")}</div>
+    </div>`).join("") || `<div class="card"><h2>插件</h2><div class="muted">未加载任何插件</div></div>`;
+  $("#main").innerHTML = `
+    <div class="card"><h2>连接</h2>
+      <div class="row">
+        <span class="dot ${s.connected ? "on" : "off"}"></span>
+        <b>${s.connected ? "已连接" : "未连接"}</b>
+        <span class="muted">${esc(s.ws_url || "")}${s.client ? "（" + esc(s.client) + "）" : ""}</span>
+        <span class="muted">框架 v${esc(s.framework_version)}</span>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn ghost" id="btn-refresh">刷新</button>
+        <button class="btn ghost" id="btn-reconnect">断开并重连</button>
+        ${s.autostart === null ? "" : `<button class="btn ghost" id="btn-autostart">开机自启动：${s.autostart ? "已开启" : "未开启"}</button>`}
+        <span class="muted">WebUI: http://${esc(s.webui?.host)}:${esc(s.webui?.port)}（${s.webui?.has_password ? "有密码" : "无密码"}）</span>
+      </div>
+    </div>${pluginCards}`;
+  $("#btn-refresh").onclick = viewStatus;
+  $("#btn-reconnect").onclick = async () => {
+    await api("/api/action/reconnect", { method: "POST" });
+    toast("已断开，正在按当前配置重连…");
+    setTimeout(viewStatus, 1000);
+  };
+  const autoBtn = $("#btn-autostart");
+  if (autoBtn) autoBtn.onclick = async () => {
+    autoBtn.disabled = true;
+    try {
+      const r = await api("/api/action/autostart", { method: "POST", body: { enabled: !statusCache.autostart } });
+      toast(r.enabled ? "已开启开机自启动（登录时最小化窗口自动运行）" : "已关闭开机自启动");
+      await viewStatus();
+    } catch (e) { toast("操作失败: " + e.message, true); autoBtn.disabled = false; }
+  };
+  refreshConnBadge();
+}
+
+async function viewFramework() {
+  $("#main").innerHTML = `<div class="card"><h2>加载中…</h2></div>`;
+  const data = await api("/api/config/framework");
+  $("#main").innerHTML = `
+    <div id="fw-editor">${editorView({ schema: data.schema, config: data.config, file: data.file, rawId: "fw" })}</div>`;
+  bindEditor("fw-editor", "/api/config/framework", () => refreshConnBadge());
+}
+
+async function viewPlugin() {
+  $("#main").innerHTML = `<div class="card"><h2>加载中…</h2></div>`;
+  if (!statusCache) statusCache = await api("/api/status");
+  const plugins = statusCache.plugins || [];
+  if (!plugins.length) {
+    $("#main").innerHTML = `<div class="card"><h2>插件配置</h2><div class="muted">未加载任何插件</div></div>`;
+    return;
+  }
+  $("#main").innerHTML = `
+    <div class="card"><h2>选择插件</h2>
+      <select id="plugin-pick">${plugins.map(p => `<option value="${esc(p.name)}">${esc(p.name)}（${esc(p.description || "")}）</option>`).join("")}</select>
+    </div>
+    <div id="plugin-editor"></div>`;
+  const load = async () => {
+    const name = $("#plugin-pick").value;
+    const el = $("#plugin-editor");
+    el.innerHTML = `<div class="card"><h2>加载中…</h2></div>`;
+    try {
+      const data = await api("/api/config/plugin/" + encodeURIComponent(name));
+      el.innerHTML = `<div id="pg-editor">${editorView({
+        schema: data.schema, config: data.config, file: data.file, rawId: "pg",
+      })}</div>
+      ${data.schema_declared ? "" : `<div class="desc" style="padding:0 4px">该插件未在 plugin.json 中声明 config_schema，以上表单由当前配置值自动推断；可在 plugin.json 中添加 config_schema 获得完整的中文表单。</div>`}`;
+      bindEditor("pg-editor", "/api/config/plugin/" + encodeURIComponent(name), resp => {
+        if (resp.hot_applied) toast("已保存并热更新生效");
+      });
+    } catch (e) {
+      el.innerHTML = `<div class="card"><h2>加载失败</h2><div class="muted">${esc(e.message)}</div></div>`;
+    }
+  };
+  $("#plugin-pick").onchange = load;
+  await load();
+}
+
+function refreshConnBadge() {
+  api("/api/status").then(s => {
+    $("#conn").innerHTML = `<span class="dot ${s.connected ? "on" : "off"}"></span> ${s.connected ? "已连接" : "未连接"}`;
+    statusCache = s;
+  }).catch(() => {});
+}
+
+// ---------- 路由与初始化 ----------
+const views = { status: viewStatus, framework: viewFramework, plugin: viewPlugin };
+$$("nav button").forEach(btn => btn.onclick = () => {
+  $$("nav button").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  views[btn.dataset.tab]().catch(e => { if (e.message !== "未登录") toast(e.message, true); });
+});
+
+async function init() {
+  try {
+    await api("/api/status");
+    showLogin(false);
+    await viewStatus();
+    startBadgeTimer();
+  } catch (e) { showLogin(true); }
+}
+
+$("#login-btn").onclick = async () => {
+  try {
+    await api("/api/auth/verify", { method: "POST", body: { password: $("#login-pwd").value } });
+    $("#login-pwd").value = "";
+    showLogin(false);
+    await viewStatus();
+    startBadgeTimer();
+  } catch (e) { toast("密码错误", true); }
+};
+$("#login-pwd").addEventListener("keydown", e => { if (e.key === "Enter") $("#login-btn").click(); });
+
+init();
+</script>
+</body>
+</html>

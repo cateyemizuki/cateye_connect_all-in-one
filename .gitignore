@@ -1,0 +1,11 @@
+# 运行时凭据（严禁提交：含服务器公网 IP / token / WebUI 密码）
+cateye_connect_all-in-one_client/config.json
+cateye_connect_all-in-one_client/config.json.bak
+
+# Python 虚拟环境与字节码缓存
+.venv/
+__pycache__/
+*.py[cod]
+
+# 运行日志
+*.log

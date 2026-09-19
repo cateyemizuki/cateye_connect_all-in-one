@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "ws_url": "ws://127.0.0.1:8765",
+  "token": "与统一连接插件配置中 ws_token 一致",
+  "ws_tls": {
+    "insecure": false,
+    "ca_file": ""
+  },
+  "reconnect_interval": 5,
+  "auth_timeout": 10,
+  "plugins_dir": "./plugins",
+  "webui": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 8766
+  }
+}

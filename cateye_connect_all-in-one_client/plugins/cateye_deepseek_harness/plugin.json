@@ -1,0 +1,92 @@
+{
+  "name": "cateye_deepseek_harness",
+  "version": "1.0.0",
+  "description": "DeepSeek Harness 对话与本地系统控制（截图 / CMD / 运行程序 / 预设脚本 / ADB）",
+  "commands": [
+    "deepseek",
+    "screenshot",
+    "cmd_start",
+    "cmd_stop",
+    "run",
+    "preset"
+  ],
+  "config_schema": [
+    {
+      "title": "DeepSeek Harness",
+      "fields": [
+        {
+          "key": "dsh.command",
+          "type": "list",
+          "label": "DSH 启动命令",
+          "description": "headless 模式启动命令（列表形式，如 [\"node\", \"apps/cli/lib/bin.js\", \"--profile\", \"headless\"]）；构建产物缺失时自动回退 pnpm 方式"
+        },
+        {
+          "key": "dsh.cwd",
+          "type": "string",
+          "label": "DSH 仓库目录",
+          "description": "DeepSeek Harness 安装目录，建议绝对路径"
+        },
+        {
+          "key": "dsh.workspace",
+          "type": "string",
+          "label": "工作区根目录",
+          "description": "相对插件 data 目录解析，默认 ./deepseek"
+        },
+        {
+          "key": "features.deepseek",
+          "type": "bool",
+          "label": "启用对话"
+        },
+        {
+          "key": "features.screenshot",
+          "type": "bool",
+          "label": "启用截图"
+        },
+        {
+          "key": "features.cmd",
+          "type": "bool",
+          "label": "启用 CMD"
+        },
+        {
+          "key": "features.run",
+          "type": "bool",
+          "label": "启用运行程序"
+        },
+        {
+          "key": "features.preset",
+          "type": "bool",
+          "label": "启用预设"
+        }
+      ]
+    },
+    {
+      "title": "目录与截图",
+      "fields": [
+        {
+          "key": "work_dirs.preset",
+          "type": "string",
+          "label": "预设目录",
+          "description": "相对插件 data 目录解析；预设脚本内 cd ../ADB 依赖 preset 与 ADB 同级"
+        },
+        {
+          "key": "work_dirs.cmd",
+          "type": "string",
+          "label": "CMD 目录"
+        },
+        {
+          "key": "cmd.default_cwd",
+          "type": "string",
+          "label": "CMD 窗口默认工作目录"
+        },
+        {
+          "key": "screenshot.blur_radius",
+          "type": "int",
+          "label": "截图默认模糊半径",
+          "min": 0,
+          "max": 64,
+          "description": "实际是否模糊、半径多少由 MaiBot 端统一连接插件决定，此项为本地兜底值"
+        }
+      ]
+    }
+  ]
+}
