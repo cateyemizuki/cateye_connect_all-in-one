@@ -91,6 +91,8 @@ def create_plugin(ctx) -> LocalPlugin:
 
 - `handle_command` 返回 `{"result": str, "error": str}`；抛异常会被框架捕获并
   以 error 返回（连接不断开）。
+- 需要给 MaiBot 侧附带结构化明细时，在响应 dict 里加 `"data": {…}`（dict），
+  router/hub 会原样透传（如多屏截图的 `screens`，见 dev-maibot-plugin.md §6）。
 - 长耗时工作直接在 `handle_command` 里 await（如 deepseek 的 headless 子进程），
   hub 侧配合 `submit` 模式即可不限时等待。
 - 插件目录会被加入 `sys.path`，内部可按顶层包导入自己的模块

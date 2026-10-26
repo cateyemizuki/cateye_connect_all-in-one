@@ -30,6 +30,8 @@ class FrameworkClient:
         self._router: Optional[CommandRouter] = None
         self._ws = None
         self._cert_hint_shown = False
+        # 鉴权成功后由服务端通告的限制（auth_ok.max_frame_mb，单位 MB；0=未知）
+        self.hub_limits: dict = {}
 
     def set_router(self, router: CommandRouter) -> None:
         self._router = router
@@ -150,6 +152,11 @@ class FrameworkClient:
             self._log.warn("鉴权响应格式异常，将重试连接")
             return "retry"
         if resp.get("type") == protocol.AUTH_OK:
+            # 服务端通告的帧上限（旧服务端不带该字段则记 0 = 未知）
+            try:
+                self.hub_limits = {"max_frame_mb": float(resp.get("max_frame_mb") or 0)}
+            except (TypeError, ValueError):
+                self.hub_limits = {"max_frame_mb": 0.0}
             self._log.info("已连接并鉴权成功（服务端: %s）", resp.get("server", "?"))
             return "ok"
         self._log.error("鉴权失败: %s", resp.get("error", "未知错误"))

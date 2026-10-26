@@ -23,8 +23,11 @@ class PluginLoadError(Exception):
     pass
 
 
-def load_plugins(plugins_dir: Path, logger: Logger, emit_event) -> list[LocalPlugin]:
-    """加载 plugins_dir 下的全部插件；单个插件失败不影响其他插件。"""
+def load_plugins(plugins_dir: Path, logger: Logger, emit_event, framework=None) -> list[LocalPlugin]:
+    """加载 plugins_dir 下的全部插件；单个插件失败不影响其他插件。
+
+    ``framework`` 会注入每个插件的 ``ctx.framework``（可读 hub_limits 等）。
+    """
     plugins: list[LocalPlugin] = []
     seen_names: set[str] = set()
     seen_commands: dict[str, str] = {}
@@ -70,6 +73,7 @@ def load_plugins(plugins_dir: Path, logger: Logger, emit_event) -> list[LocalPlu
                 data_dir=data_dir,
                 logger=logger.child(name),
                 emit_event=emit_event,
+                framework=framework,
             )
 
             factory = getattr(module, "create_plugin", None)

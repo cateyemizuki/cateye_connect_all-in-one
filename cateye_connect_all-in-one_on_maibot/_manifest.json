@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "id": "cateye.connect-hub",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "name": "Cateye 统一连接插件",
   "description": "MaiBot 端与本地 PC 之间的统一 WebSocket 连接通道：持有唯一连接，向其他插件暴露 call/submit/status/subscribe 公共 API，业务插件无需自行管理连接。",
   "author": {

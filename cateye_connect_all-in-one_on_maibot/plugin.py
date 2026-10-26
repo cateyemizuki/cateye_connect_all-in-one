@@ -7,9 +7,10 @@
       submit      异步提交命令，响应经调用方动态 API 回调（长耗时任务）
       status      连接状态与本地插件注册表
       subscribe / unsubscribe  订阅本地端上行事件
-      screenshot  获取本地 PC 截图（base64 PNG）
+      screenshot  获取本地 PC 截图（base64 PNG；多屏时 screens 每屏一项、
+                  主屏恒在第 0 位，image_base64 恒为主屏，详见 docs/dev-maibot-plugin.md）
   - 截图命令 /sj（/screenshot）由本插件直接提供：模糊策略与限流集中在此，
-    其他插件也可经 screenshot API 取图（自行嵌入消息、渲染等）
+    多屏时发送主屏截图；其他插件也可经 screenshot API 取图（自行嵌入消息、渲染等）
   - 分发本地主动上行的 event 帧给订阅者
 
 业务插件（如 deepseek harness）不应自行建立连接，也不应重复实现截图，
@@ -19,6 +20,8 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import struct
 import time
 import uuid
 from typing import Any, Optional
@@ -28,10 +31,35 @@ from maibot_sdk import API, Command, Field, MaiBotPlugin, PluginConfigBase
 from . import protocol
 from .ws_server import ConnectionHub
 
-SUPPORTED_CONFIG_VERSION = "1.0.0"
+SUPPORTED_CONFIG_VERSION = "1.1.0"
 
 # 截图模糊半径钳制上限：异常大半径会导致 PIL 模糊计算 CPU/内存失控
 MAX_BLUR_RADIUS = 64
+
+
+def _png_size_of(image_b64: str) -> tuple[Optional[int], Optional[int]]:
+    """从 base64 PNG 的 IHDR 读宽高（只解头部 24 字节，不整图解码）。"""
+    try:
+        raw = base64.b64decode(image_b64[:64], validate=False)
+    except Exception:
+        return None, None
+    if len(raw) >= 24 and raw[:8] == b"\x89PNG\r\n\x1a\n":
+        width, height = struct.unpack(">II", raw[16:24])
+        return int(width), int(height)
+    return None, None
+
+
+def _schema_i18n(label_en: str) -> dict[str, dict[str, str]]:
+    """字段级 WebUI i18n 元数据（当前提供 en_US）。
+
+    插件配置字段的文案约定（与官方适配器一致）：默认语言文案写在
+    ``json_schema_extra["label"]``，**必须是字符串**；其它语言写在
+    ``json_schema_extra["i18n"][locale]["label"]``。面板渲染时先按界面语言查
+    ``i18n``，查不到再回退 ``label``；把语言字典直接塞进 ``label``（例如
+    ``{"label": {"zh_CN": ..., "en_US": ...}}``）在旧版面板上会被原样打印成
+    ``{'zh_CN': ...}``。``hint`` / ``placeholder`` 同理。
+    """
+    return {"en_US": {"label": label_en}}
 
 
 # ============================================================================
@@ -39,15 +67,22 @@ MAX_BLUR_RADIUS = 64
 # ============================================================================
 
 class PluginSectionConfig(PluginConfigBase):
+    """插件基础设置。"""
+
     __ui_label__ = "插件"
     __ui_icon__ = "package"
     __ui_order__ = 0
+    # 段级 WebUI 翻译（与字段级 i18n 配套；缺了英文界面会中英混杂）
+    __ui_i18n__ = {
+        "en_US": {"title": "Plugin", "description": "Basic plugin settings."},
+    }
 
     enabled: bool = Field(
         default=True,
         description="是否启用插件",
         json_schema_extra={
-            "label": {"zh_CN": "启用插件", "en_US": "Enable Plugin"},
+            "label": "启用插件",
+            "i18n": _schema_i18n("Enable Plugin"),
             "x-widget": "switch",
         },
     )
@@ -59,72 +94,109 @@ class PluginSectionConfig(PluginConfigBase):
 
 
 class ConnectionConfig(PluginConfigBase):
+    """与本地客户端的 WebSocket 连接。"""
+
     __ui_label__ = "本地连接"
     __ui_icon__ = "cable"
     __ui_order__ = 1
+    __ui_i18n__ = {
+        "en_US": {"title": "Local Connection", "description": "WebSocket service for the local client."},
+    }
 
     ws_host: str = Field(
         default="0.0.0.0",
         description="WebSocket 监听地址：0.0.0.0=所有网卡（默认，与旧版一致）；127.0.0.1=仅本机可连",
         json_schema_extra={
-            "label": {"zh_CN": "监听地址", "en_US": "Listen Host"},
-            "x-placeholder": "0.0.0.0",
+            "label": "监听地址",
+            "i18n": _schema_i18n("Listen Host"),
+            "placeholder": "0.0.0.0",
         },
     )
     ws_port: int = Field(
         default=8765,
         description="WebSocket 服务端口",
-        json_schema_extra={"label": {"zh_CN": "服务端口", "en_US": "Port"}},
+        json_schema_extra={
+            "label": "服务端口",
+            "i18n": _schema_i18n("Port"),
+        },
     )
     ws_token: str = Field(
         default="",
         description="鉴权 Token（本地框架连接时必须携带）；留空则服务不启动",
         json_schema_extra={
-            "label": {"zh_CN": "鉴权 Token", "en_US": "Auth Token"},
+            "label": "鉴权 Token",
+            "i18n": _schema_i18n("Auth Token"),
             "x-widget": "password",
         },
     )
     auth_timeout: int = Field(
         default=10,
         description="鉴权等待秒数",
-        json_schema_extra={"label": {"zh_CN": "鉴权等待（秒）", "en_US": "Auth Timeout (s)"}},
+        json_schema_extra={
+            "label": "鉴权等待（秒）",
+            "i18n": _schema_i18n("Auth Timeout (s)"),
+        },
     )
     max_frame_mb: int = Field(
-        default=10,
-        description="单帧大小上限（MB，截图 base64 用）",
-        json_schema_extra={"label": {"zh_CN": "单帧上限（MB）", "en_US": "Max Frame (MB)"}},
+        default=25,
+        description="单帧大小上限（MB）：多屏逐屏截图的 base64 总量可达十几 MB，"
+        "建议 ≥25；上限会随鉴权应答通告给本地端用于自动降级",
+        json_schema_extra={
+            "label": "单帧上限（MB）",
+            "i18n": _schema_i18n("Max Frame (MB)"),
+        },
     )
 
 
 class ScreenshotConfig(PluginConfigBase):
+    """截图策略（/sj 命令与 screenshot API 共用）。"""
+
     __ui_label__ = "截图"
     __ui_icon__ = "screenshot"
     __ui_order__ = 2
+    __ui_i18n__ = {
+        "en_US": {"title": "Screenshot", "description": "Shared by the /sj command and the screenshot API."},
+    }
 
     admin_users: list[str] = Field(
         default_factory=list,
         description="管理员 QQ 号列表（管理员截图不模糊）",
-        json_schema_extra={"label": {"zh_CN": "管理员 QQ 号", "en_US": "Admin QQ IDs"}},
+        json_schema_extra={
+            "label": "管理员 QQ 号",
+            "i18n": _schema_i18n("Admin QQ IDs"),
+        },
     )
     blur_radius: int = Field(
         default=5,
         description="非管理员高斯模糊半径（0-64）",
-        json_schema_extra={"label": {"zh_CN": "非管理员模糊半径", "en_US": "Blur Radius (non-admin)"}},
+        json_schema_extra={
+            "label": "非管理员模糊半径",
+            "i18n": _schema_i18n("Blur Radius (non-admin)"),
+        },
     )
     max_per_minute: int = Field(
         default=10,
         description="每分钟全局截图最大请求数",
-        json_schema_extra={"label": {"zh_CN": "全局限流（次/分钟）", "en_US": "Global Rate (/min)"}},
+        json_schema_extra={
+            "label": "全局限流（次/分钟）",
+            "i18n": _schema_i18n("Global Rate (/min)"),
+        },
     )
     max_per_user_per_minute: int = Field(
         default=2,
         description="每用户每分钟截图最大请求数",
-        json_schema_extra={"label": {"zh_CN": "单用户限流（次/分钟）", "en_US": "Per-User Rate (/min)"}},
+        json_schema_extra={
+            "label": "单用户限流（次/分钟）",
+            "i18n": _schema_i18n("Per-User Rate (/min)"),
+        },
     )
     command_timeout: int = Field(
         default=60,
         description="等待本地截图响应秒数",
-        json_schema_extra={"label": {"zh_CN": "截图等待（秒）", "en_US": "Screenshot Timeout (s)"}},
+        json_schema_extra={
+            "label": "截图等待（秒）",
+            "i18n": _schema_i18n("Screenshot Timeout (s)"),
+        },
     )
 
 
@@ -267,7 +339,7 @@ class CateyeConnectHubPlugin(MaiBotPlugin):
         return max(0, min(blur, MAX_BLUR_RADIUS))
 
     async def _capture(self, blur: int, user_id: str, timeout: float | None = 60.0) -> dict:
-        """向本地端请求截图，返回统一形态 {"result": base64, "error": ""}。"""
+        """向本地端请求截图，返回 {"result": 主屏base64, "error": ""[, "data": 多屏明细]}。"""
         payload = protocol.make_request(
             str(uuid.uuid4()), "screenshot", {"blur_radius": blur}, user_id
         )
@@ -343,7 +415,10 @@ class CateyeConnectHubPlugin(MaiBotPlugin):
         return True, "截图处理中", True
 
     async def _screenshot_worker(self, stream_id: str, user_id: str, blur: int) -> None:
-        """后台截图任务：保留 command_timeout 超时检测（截图不应无限等待）。"""
+        """后台截图任务：保留 command_timeout 超时检测（截图不应无限等待）。
+
+        多屏时只发送**主屏**截图——聊天里默认单图，多屏明细留给 screenshot API 的调用方自行取舍。
+        """
         try:
             resp = await self._capture(blur, user_id, self.config.screenshot.command_timeout)
             if resp.get("error"):
@@ -352,6 +427,13 @@ class CateyeConnectHubPlugin(MaiBotPlugin):
 
             img_b64 = resp.get("result", "")
             if img_b64:
+                data = resp.get("data") or {}
+                screens = data.get("screens") or []
+                if len(screens) > 1:
+                    self.ctx.logger.info(
+                        "本地 PC 为多屏（%d 块），已发送主屏截图；其余屏可经 screenshot API 获取",
+                        len(screens),
+                    )
                 try:
                     await self.ctx.send.hybrid(
                         [{"type": "image", "content": img_b64}],
@@ -416,10 +498,12 @@ class CateyeConnectHubPlugin(MaiBotPlugin):
 
     @API(
         "screenshot",
-        description="获取本地 PC 截图，返回 {success, image_base64, error}；"
+        description="获取本地 PC 截图，返回 {success, image_base64, screens, screen_count, error}；"
+        "多屏时 screens 每屏一项（主屏恒在第 0 位），image_base64 恒为主屏截图"
+        "（调用方未做多图识别时直接用它即可）；"
         "blur 缺省时按策略处理（管理员不模糊，非管理员按配置半径），"
         "user_id 传入 QQ 号用于策略判定",
-        version="1",
+        version="2",
         public=True,
     )
     async def api_screenshot(
@@ -431,12 +515,33 @@ class CateyeConnectHubPlugin(MaiBotPlugin):
         del kwargs
         err = self._hub.check_ready("screenshot")
         if err:
-            return {"success": False, "image_base64": "", "error": err}
+            return {"success": False, "image_base64": "", "screens": [], "screen_count": 0, "error": err}
         eff_blur = self._policy_blur(str(user_id or "")) if blur is None else self._clamp_blur(blur)
         resp = await self._capture(eff_blur, str(user_id or ""), self.config.screenshot.command_timeout)
         if resp.get("error"):
-            return {"success": False, "image_base64": "", "error": resp["error"]}
-        return {"success": True, "image_base64": resp.get("result", ""), "error": ""}
+            return {
+                "success": False, "image_base64": "", "screens": [], "screen_count": 0,
+                "error": resp["error"],
+            }
+
+        screens = (resp.get("data") or {}).get("screens") or []
+        if not screens:
+            # 旧版本地端（无 data 明细）：把 result 单图视作唯一主屏
+            width, height = _png_size_of(resp.get("result", ""))
+            screens = [{
+                "index": 0, "primary": True,
+                "left": None, "top": None, "width": width, "height": height,
+                "image_base64": resp.get("result", ""),
+            }]
+        primary = next((s for s in screens if s.get("primary")), screens[0])
+        return {
+            "success": True,
+            # 兼容键：恒为主屏截图。未做多图识别的调用方读它即可（主屏优先原则）
+            "image_base64": str(primary.get("image_base64", "") or ""),
+            "screens": screens,
+            "screen_count": len(screens),
+            "error": "",
+        }
 
     @API("status", description="查询本地连接状态与已注册插件", version="1", public=True)
     async def api_status(self, **kwargs: Any) -> dict:

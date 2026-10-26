@@ -16,7 +16,8 @@ QQ ⇄ MaiBot
   ├─ ① cateye.connect-hub（MaiBot 统一连接插件）
   │    · 唯一持有 WS 服务端（默认 0.0.0.0:8765，token 鉴权，单客户端）
   │    · 对其他 MaiBot 插件暴露公共 API：call / submit / screenshot / status / subscribe / unsubscribe
-  │    · 截图命令 /sj（/screenshot）由本插件直接提供（模糊策略与限流集中在此）
+  │    · 截图命令 /sj（/screenshot）由本插件直接提供（模糊策略与限流集中在此，
+  │      多屏时发送主屏截图）
   │
   └─ WS（协议 v2，见 docs/protocol-v2.md）
        ⬑ ③ cateye_connect_all-in-one_client（本地框架）
@@ -56,7 +57,7 @@ QQ ⇄ MaiBot
 
 | 命令 | 说明 | 超时 |
 |---|---|---|
-| `/视奸`（/sj、/screenshot） | 本地截图（非管理员高斯模糊） | command_timeout |
+| `/视奸`（/sj、/screenshot） | 本地截图（非管理员高斯模糊；多屏逐屏抓取，发送主屏） | command_timeout |
 
 > 截图命令由 ① 统一连接插件提供。其余业务命令（对话 / 持久 CMD / 运行 / 预设等）
 > 由各自的业务插件自行注册，本仓库不再自带。
@@ -66,13 +67,17 @@ QQ ⇄ MaiBot
 - **MaiBot 侧**：任何插件依赖 `cateye.connect-hub` 后，即可
   `await self.ctx.api.call("cateye.connect-hub.call", command=..., args=...)`
   与本地端任意已注册命令通信；需要截图时直接调
-  `cateye.connect-hub.screenshot`（返回 base64 PNG，无需自建连接）；
-  详见 [docs/dev-maibot-plugin.md](docs/dev-maibot-plugin.md)。
+  `cateye.connect-hub.screenshot`（多屏时返回每屏一张截图、主屏恒在第 0 位，
+  兼容键 `image_base64` 恒为主屏——未做多图识别的插件直接用它，无需自建连接；
+  多屏兼容写法详见 [docs/dev-maibot-plugin.md](docs/dev-maibot-plugin.md) §6）；
 - **本地侧**：在 `cateye_connect_all-in-one_client/plugins/` 下按规范新建目录即可被
   框架自动加载；详见 [docs/dev-local-plugin.md](docs/dev-local-plugin.md)。
 - **协议**：帧格式与扩展点见 [docs/protocol-v2.md](docs/protocol-v2.md)。
 
 ## 联调工具
+
+`dev_tests/loopback_test_screenshot.py`：真实 hub ↔ 真实本地框架的多屏截图端到端回环
+（验证 result=主屏、data.screens 明细、blur 路径；用客户端 venv 运行，不写 config.json）。
 
 `dev_tests/mock_hub.py`：不启动 MaiBot 即可测试本地框架与插件
 （模拟 hub 的鉴权、未知命令、preset 列表）：
@@ -100,6 +105,12 @@ cateye_connect_all-in-one/
 ├── cateye_connect_all-in-one_on_maibot/        ① 统一连接插件
 └── cateye_connect_all-in-one_client/           ③ 本地框架（plugins/ 放自建插件）
 ```
+
+## 版本记录
+
+| 版本 | 日期 | 变更 |
+|---|---|---|
+| ① v1.1.0 / ④ v1.1.0 | 2026-10-27 | **多屏截图兼容**：截图改为逐屏抓取（修复副屏在负坐标区时拼接错位/尺寸错误），`screenshot` API 新增 `screens`/`screen_count`（主屏恒第 0 位），兼容键 `image_base64` 恒为主屏；/sj 多屏时发主屏；响应帧支持可选 `data` 透传，`auth_ok` 通告 `max_frame_mb`，负载超限自动降级为只回主屏（`connection.max_frame_mb` 默认 10→25）；WebUI 配置补段级英文翻译（`__ui_i18n__`） |
 
 ## 许可证
 

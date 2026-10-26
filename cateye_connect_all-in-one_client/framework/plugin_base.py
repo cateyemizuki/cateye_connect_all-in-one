@@ -22,12 +22,16 @@ class PluginContext:
         data_dir: Path,
         logger,
         emit_event: Callable[[str, dict], Awaitable[bool]],
+        framework=None,
     ):
         self.name = name
         self.plugin_dir = plugin_dir
         self.data_dir = data_dir
         self.logger = logger
         self._emit_event = emit_event
+        #: 框架本体（FrameworkClient）：可读 ``hub_limits``（鉴权后由服务端
+        #: 通告的帧上限等），供大负载响应（如多屏截图）自行做降级保护
+        self.framework = framework
 
     def load_plugin_config(self, defaults: dict | None = None) -> dict:
         """读取插件目录下 config.json（可选），缺失/失败时返回 defaults。"""

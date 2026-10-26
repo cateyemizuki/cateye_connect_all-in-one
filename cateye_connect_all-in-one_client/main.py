@@ -21,6 +21,7 @@ CLIENT_ROOT = Path(__file__).parent.resolve()
 sys.path.insert(0, str(CLIENT_ROOT))
 
 from framework import FRAMEWORK_VERSION
+from framework import autostart
 from framework.config import ensure_webui_password, load_config
 from framework.log import Logger
 from framework.plugin_loader import load_plugins
@@ -28,10 +29,26 @@ from framework.router import CommandRouter
 from framework.ws_client import FrameworkClient
 
 
+def ensure_autostart(config: dict) -> None:
+    """按配置项 autostart 补建开机自启动快捷方式。
+
+    只建不删：关闭自启动请在 WebUI「框架配置」里把开关关掉并保存
+    （立即移除快捷方式）；这样避免手工编辑/测试运行时误删用户的自启动。
+    """
+    if not config.get("autostart"):
+        return
+    try:
+        if not autostart.is_enabled():
+            autostart.install()
+            print("[i] 已按配置创建开机自启动快捷方式（登录时自动运行）")
+    except Exception as e:
+        print(f"[!] 开机自启动快捷方式创建失败: {e}")
+
+
 async def run(config: dict, log: Logger) -> None:
     client = FrameworkClient(config, log)
     plugins_dir = (CLIENT_ROOT / str(config.get("plugins_dir", "./plugins"))).resolve()
-    plugins = load_plugins(plugins_dir, log, client.emit_event)
+    plugins = load_plugins(plugins_dir, log, client.emit_event, framework=client)
     if not plugins:
         log.warn("未加载任何本地插件，仅保持连接（所有命令都会返回未知命令）")
     router = CommandRouter(plugins, log)
@@ -61,30 +78,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Cateye Connect 本地端框架")
     parser.add_argument("--ws", default=config.get("ws_url", ""), help="覆盖 config.json 的 ws_url")
     parser.add_argument("--token", default=config.get("token", ""), help="覆盖 config.json 的 token")
-    parser.add_argument(
-        "--autostart", choices=("on", "off", "status"), default=None,
-        help="管理开机自启动（框架根目录的 开机自启-开启/关闭.cmd 即调用此参数）",
-    )
     args = parser.parse_args()
-
-    if args.autostart:
-        from framework import autostart
-
-        try:
-            if args.autostart == "on":
-                target = autostart.install()
-                print(f"[OK] 已开启开机自启动: {target}")
-            elif args.autostart == "off":
-                removed = autostart.uninstall()
-                print("[OK] 已关闭开机自启动" if removed else "[i] 开机自启动本就未开启")
-            else:
-                state = "已开启" if autostart.is_enabled() else "未开启"
-                print(f"[i] 开机自启动: {state}（{autostart.shortcut_path()}）")
-        except Exception as e:
-            print(f"[X] 操作失败: {e}")
-            sys.exit(1)
-        return
-
     if args.ws:
         config["ws_url"] = args.ws
     if args.token:
@@ -95,6 +89,7 @@ def main() -> None:
         sys.exit(1)
 
     ensure_webui_password(config)
+    ensure_autostart(config)
 
     log = Logger()
     log.info("Cateye Connect 本地端框架 v%s", FRAMEWORK_VERSION)

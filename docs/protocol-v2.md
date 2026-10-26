@@ -6,7 +6,7 @@
 - 传输：WebSocket，JSON 文本帧，UTF-8，`ensure_ascii=False`
 - 方向：MaiBot 端为**服务端**（被动监听），本地端为**客户端**（主动外连，自动重连）
 - 模型：单客户端。新连接顶掉旧连接（旧连接被关闭）
-- 心跳：客户端 `ping_interval=30, ping_timeout=10`；两端 `max_size=10MB`（截图 base64 用）
+- 心跳：客户端 `ping_interval=30, ping_timeout=10`；两端 `max_size` 由 hub 配置 `connection.max_frame_mb` 决定（v1.1.0 起默认 25MB，多屏截图 base64 用），并经 `auth_ok.max_frame_mb` 通告给本地端供大负载响应自行降级
 
 ## 帧类型总览
 
@@ -36,7 +36,9 @@
 }
 ```
 
-2. hub 校验成功 → `{"type": "auth_ok", "version": 2, "server": "cateye-connect-hub"}`；
+2. hub 校验成功 → `{"type": "auth_ok", "version": 2, "server": "cateye-connect-hub",
+   "max_frame_mb": 25.0}`（`max_frame_mb` 为可选字段：服务端 WS 帧上限，本地端据此对
+   多屏截图等大负载响应做降级；旧服务端不带该字段时记 0=未知）；
    失败 → `{"type": "auth_error", "error": "鉴权失败：token 不正确"}` 并断开。
 3. hub 记录插件注册表；此后 `request` 帧的 `command` 不在注册表内时，
    hub 直接返回错误（不占用本地往返）：`本地未加载可处理「<命令>」的插件`。
@@ -53,10 +55,14 @@
 响应（本地 → hub）：
 
 ```json
-{"type": "response", "call_id": "<同请求>", "result": "<文本；截图为 base64 PNG>", "error": ""}
+{"type": "response", "call_id": "<同请求>", "result": "<文本；截图为主屏 base64 PNG>", "error": ""
+ ["data": {…}  可选：命令附带的结构化明细，hub 原样透传给调用方]}
 ```
 
 - `error` 非空表示失败（`result` 应忽略）；两者均为字符串。
+- `data`（可选，v1.1.0 起）：dict。router 对插件响应中形态为 dict 的 `data` 原样透传，
+  hub 的 `send_and_wait` 把它并入返回值（`result`/`error` 语义不变，旧调用方不受影响）。
+  现役用途：`screenshot` 命令的 `data.screens` 多屏明细（见 dev-maibot-plugin.md §6）。
 - hub 侧等待语义（错误文案与旧版一致）：
   - 未连接：`客户端未连接，请先启动本地客户端`
   - 超时：`本地处理超时，请重试`
@@ -69,7 +75,7 @@
 | command | args | result |
 |---|---|---|
 | `deepseek` | `{prompt, workspace}` | Harness 最终答案文本 |
-| `screenshot` | `{blur_radius}` | base64 PNG |
+| `screenshot` | `{blur_radius}` | 主屏 base64 PNG；`data.screens` 每屏一项（index/primary/left/top/width/height/image_base64，主屏恒第 0 位） |
 | `cmd_start` | `{window_id, command}` | 执行摘要 |
 | `cmd_stop` | `{window_id}` 或 `{pid}` | 关闭结果 |
 | `run` | `{program}` | 运行确认 |

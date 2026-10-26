@@ -46,6 +46,7 @@ class ConnectionHub:
 
         self._token = ""
         self._server = None
+        self._max_frame_mb: float = 0.0
         self._client: Any = None
         self._client_info: dict = {}
         # call_id -> (future, 所属连接)；断连时按连接归属唤醒
@@ -90,6 +91,7 @@ class ConnectionHub:
                 "ws_token 未设置：为防止未鉴权访问本地 PC，必须在统一连接插件配置中设置非空 token"
             )
         self._token = token
+        self._max_frame_mb = max_size / (1024 * 1024)
         self._server = await websockets.serve(self._handler, host, port, max_size=max_size)
 
     async def stop(self) -> None:
@@ -209,6 +211,8 @@ class ConnectionHub:
                     "type": protocol.AUTH_OK,
                     "version": protocol.PROTOCOL_VERSION,
                     "server": protocol.SERVER_NAME,
+                    # 通告帧上限：本地端大负载响应（如多屏截图）据此自行降级
+                    **({"max_frame_mb": round(self._max_frame_mb, 1)} if self._max_frame_mb else {}),
                 }
             )
         )
@@ -293,7 +297,8 @@ class ConnectionHub:
     async def send_and_wait(self, payload: dict, timeout: float | None = 60.0) -> dict:
         """发送命令并同步等待响应；timeout=None 表示不限时（长耗时任务用 submit）。
 
-        返回统一形态 {"result": str, "error": str}。
+        返回统一形态 {"result": str, "error": str}；本地端附带结构化数据
+        （response.data，如多屏截图明细）时原样透传为 ``data`` 键。
         """
         err = self.check_ready(payload.get("command", ""))
         if err:
@@ -309,10 +314,14 @@ class ConnectionHub:
             await ws.send(protocol.encode(payload))
             response = await asyncio.wait_for(fut, timeout=timeout)
             # str 归一化：防御异常端点发来非字符串字段，保证下游 send 可用
-            return {
+            out = {
                 "result": str(response.get("result", "") or ""),
                 "error": str(response.get("error", "") or ""),
             }
+            data = response.get("data")
+            if isinstance(data, dict):
+                out["data"] = data
+            return out
         except asyncio.TimeoutError:
             return {"result": "", "error": protocol.ERR_TIMEOUT}
         except websockets.exceptions.ConnectionClosed:

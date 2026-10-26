@@ -33,8 +33,22 @@ class CommandRouter:
             for p in self._plugins
         ]
 
+    @staticmethod
+    def _normalize(call_id: str, resp: dict) -> dict:
+        """归一化成响应帧；插件附带的结构化数据（dict）放 ``data`` 透传
+        （如多屏截图的 ``screens`` 明细，见 screenshot_handler）。"""
+        out = {
+            "call_id": call_id,
+            "result": resp.get("result", ""),
+            "error": resp.get("error", ""),
+        }
+        data = resp.get("data")
+        if isinstance(data, dict):
+            out["data"] = data
+        return out
+
     async def dispatch(self, call_id: str, command: str, args: dict, user_id: str) -> dict:
-        """分发命令，返回统一响应形态 {"call_id", "result", "error"}。"""
+        """分发命令，返回统一响应形态 {"call_id", "result", "error"[, "data"]}。"""
         plugin = self._routes.get(command)
         if plugin is None:
             return {"call_id": call_id, "result": "", "error": f"未知命令: {command}"}
@@ -45,8 +59,4 @@ class CommandRouter:
             return {"call_id": call_id, "result": "", "error": str(e)}
         if not isinstance(resp, dict):
             resp = {"result": "" if resp is None else str(resp), "error": ""}
-        return {
-            "call_id": call_id,
-            "result": resp.get("result", ""),
-            "error": resp.get("error", ""),
-        }
+        return self._normalize(call_id, resp)
